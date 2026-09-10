@@ -21,13 +21,9 @@ export const WinnerModal: React.FC<WinnerModalProps> = ({
   onPlayAgain,
   onLeave,
 }) => {
-  if (!winnerId) return null;
-
-  const winner = players.find((p) => p.id === winnerId);
-  const isMe = winnerId === myPlayerId;
-
   // Trigger confetti cannon
   useEffect(() => {
+    if (!winnerId) return;
     try {
       confetti({
         particleCount: 120,
@@ -38,7 +34,12 @@ export const WinnerModal: React.FC<WinnerModalProps> = ({
     } catch {
       // ignore
     }
-  }, []);
+  }, [winnerId]);
+
+  if (!winnerId) return null;
+
+  const winner = players.find((p) => p.id === winnerId);
+  const isMe = winnerId === myPlayerId;
 
   return (
     <AnimatePresence>

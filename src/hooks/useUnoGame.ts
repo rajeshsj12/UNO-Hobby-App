@@ -5,31 +5,38 @@ import { soundFx } from '../lib/audio';
 import { unoEngine } from '../services/unoEngine';
 
 export function useUnoGame() {
-  const [playerId, setPlayerId] = useState<string>('');
-  const [playerName, setPlayerNameState] = useState<string>('');
+  const [playerId] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return getOrCreatePlayerId();
+  });
+  const [playerName, setPlayerNameState] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    const id = getOrCreatePlayerId();
+    const savedName = getSavedPlayerName();
+    return savedName || 'Player_' + id.substring(0, 4);
+  });
   const [currentRoomCode, setCurrentRoomCode] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<FullGameSnapshot | null>(null);
+
+  // Auto-reconnect if player was already in the room from URL
+  useEffect(() => {
+    if (typeof window === 'undefined' || !playerId) return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomParam = urlParams.get('room');
+    if (!roomParam) return;
+
+    unoEngine.loadFromSupabase(roomParam).then((state) => {
+      if (state && state.players.some((p) => p.id === playerId)) {
+        setCurrentRoomCode(roomParam.toUpperCase());
+      }
+    });
+  }, [playerId]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [wildCardPending, setWildCardPending] = useState<UnoCard | null>(null);
   const lastTurnIndex = useRef<number | null>(null);
   const lastLogsCount = useRef<number>(0);
-
-  // Initialize UUID and saved player name from cookie
-  useEffect(() => {
-    const id = getOrCreatePlayerId();
-    const savedName = getSavedPlayerName();
-    setPlayerId(id);
-    setPlayerNameState(savedName || 'Player_' + id.substring(0, 4));
-
-    // Check URL parameters for direct room code / share link
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomParam = urlParams.get('room');
-    if (roomParam) {
-      setCurrentRoomCode(roomParam.toUpperCase());
-    }
-  }, []);
 
   const setPlayerName = useCallback((name: string) => {
     setPlayerNameState(name);
@@ -87,13 +94,13 @@ export function useUnoGame() {
   }, [currentRoomCode, playerId, showToast]);
 
   const createRoom = useCallback(
-    (name: string) => {
+    async (name: string) => {
       if (!playerId) return;
       setLoading(true);
       setError(null);
       try {
         setPlayerName(name);
-        const res = unoEngine.createRoom(name, playerId);
+        const res = await unoEngine.createRoom(name, playerId);
         setCurrentRoomCode(res.room_code);
         soundFx.playDraw();
         // Update URL cleanly
@@ -109,13 +116,13 @@ export function useUnoGame() {
   );
 
   const joinRoom = useCallback(
-    (code: string, name: string) => {
+    async (code: string, name: string) => {
       if (!playerId) return;
       setLoading(true);
       setError(null);
       try {
         setPlayerName(name);
-        const res = unoEngine.joinRoom(code, name, playerId);
+        const res = await unoEngine.joinRoom(code, name, playerId);
         if (res.success) {
           setCurrentRoomCode(code.toUpperCase());
           soundFx.playDraw();

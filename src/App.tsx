@@ -48,7 +48,11 @@ export default function App() {
   } = useUnoGame();
 
   const [inputName, setInputName] = useState(playerName || '');
-  const [inputCode, setInputCode] = useState('');
+  const [inputCode, setInputCode] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    const urlParams = new URLSearchParams(window.location.search);
+    return (urlParams.get('room') || '').toUpperCase();
+  });
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showSqlModal, setShowSqlModal] = useState(false);
   const [showNextJsModal, setShowNextJsModal] = useState(false);

@@ -13,6 +13,7 @@ import {
   shuffleDeck,
 } from '../lib/deckMath';
 import { generateUUID } from '../lib/cookie';
+import { supabase } from '../lib/supabase';
 
 interface InternalRoomState {
   room: Room;
@@ -26,10 +27,23 @@ interface InternalRoomState {
 class UnoEngine {
   private rooms: Map<string, InternalRoomState> = new Map();
   private subscribers: Map<string, Set<(snapshot: FullGameSnapshot) => void>> = new Map();
+  private realtimeChannels: Map<string, ReturnType<typeof supabase.channel>> = new Map();
+  private broadcastChannel: BroadcastChannel | null =
+    typeof window !== 'undefined' && 'BroadcastChannel' in window
+      ? new BroadcastChannel('uno_multiplayer_sync')
+      : null;
 
   constructor() {
     // Load persisted rooms from localStorage if in browser
     this.restoreFromStorage();
+    if (this.broadcastChannel) {
+      this.broadcastChannel.onmessage = (event) => {
+        if (event.data?.roomCode && event.data?.state) {
+          this.rooms.set(event.data.roomCode, event.data.state);
+          this.notifySubscribers(event.data.roomCode);
+        }
+      };
+    }
   }
 
   private persistToStorage() {
@@ -60,6 +74,91 @@ class UnoEngine {
     }
   }
 
+  private notifySubscribers(roomCode: string) {
+    const key = roomCode.toUpperCase();
+    const subs = this.subscribers.get(key);
+    if (subs) {
+      subs.forEach((cb) => {
+        try {
+          cb({} as FullGameSnapshot);
+        } catch (e) {
+          console.error('Broadcast error:', e);
+        }
+      });
+    }
+  }
+
+  private ensureRealtimeSubscription(roomCode: string) {
+    const key = roomCode.toUpperCase();
+    if (this.realtimeChannels.has(key)) return;
+
+    // Fetch latest from Supabase in case another browser created or modified it
+    this.loadFromSupabase(key).then((state) => {
+      if (state) {
+        this.notifySubscribers(key);
+      }
+    });
+
+    try {
+      const channel = supabase
+        .channel(`room_sync_${key}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'room_states',
+            filter: `room_code=eq.${key}`,
+          },
+          (payload) => {
+            const newRecord = payload.new as { state?: InternalRoomState };
+            if (newRecord?.state) {
+              this.rooms.set(key, newRecord.state);
+              this.persistToStorage();
+              this.notifySubscribers(key);
+            }
+          }
+        )
+        .subscribe();
+
+      this.realtimeChannels.set(key, channel);
+    } catch (err) {
+      console.error('Failed to subscribe to Supabase realtime:', err);
+    }
+  }
+
+  public async loadFromSupabase(roomCode: string): Promise<InternalRoomState | null> {
+    const key = roomCode.toUpperCase();
+    try {
+      const { data, error } = await supabase
+        .from('room_states')
+        .select('state')
+        .eq('room_code', key)
+        .maybeSingle();
+
+      if (error || !data?.state) return null;
+      const state = data.state as InternalRoomState;
+      this.rooms.set(key, state);
+      this.persistToStorage();
+      return state;
+    } catch {
+      return null;
+    }
+  }
+
+  private async syncToSupabase(roomCode: string, state: InternalRoomState) {
+    const key = roomCode.toUpperCase();
+    try {
+      await supabase.from('room_states').upsert({
+        room_code: key,
+        state: state as unknown as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Failed to sync state to Supabase:', err);
+    }
+  }
+
   public subscribe(roomCode: string, playerId: string, callback: (snapshot: FullGameSnapshot) => void): () => void {
     const key = roomCode.toUpperCase();
     if (!this.subscribers.has(key)) {
@@ -74,7 +173,12 @@ class UnoEngine {
 
     // Initial trigger
     const initial = this.getSnapshot(key, playerId);
-    if (initial) callback(initial);
+    if (initial) {
+      callback(initial);
+    }
+
+    // Connect to Supabase Realtime channel and fetch remote state
+    this.ensureRealtimeSubscription(key);
 
     return () => {
       set.delete(wrappedCb);
@@ -83,17 +187,20 @@ class UnoEngine {
 
   private broadcast(roomCode: string) {
     const key = roomCode.toUpperCase();
-    const subs = this.subscribers.get(key);
-    if (subs) {
-      subs.forEach((cb) => {
-        try {
-          cb({} as FullGameSnapshot); // triggers wrappedCb
-        } catch (e) {
-          console.error('Broadcast error:', e);
-        }
-      });
-    }
+    const state = this.rooms.get(key);
+    this.notifySubscribers(key);
     this.persistToStorage();
+
+    if (state) {
+      if (this.broadcastChannel) {
+        try {
+          this.broadcastChannel.postMessage({ roomCode: key, state });
+        } catch {
+          // ignore
+        }
+      }
+      this.syncToSupabase(key, state);
+    }
   }
 
   private addLog(state: InternalRoomState, text: string, type: GameLogEntry['type']) {
@@ -107,7 +214,7 @@ class UnoEngine {
     if (state.logs.length > 50) state.logs.pop();
   }
 
-  public createRoom(playerName: string, hostPlayerId: string): { room_id: string; room_code: string } {
+  public async createRoom(playerName: string, hostPlayerId: string): Promise<{ room_id: string; room_code: string }> {
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     const roomId = generateUUID();
 
@@ -147,17 +254,24 @@ class UnoEngine {
 
     this.addLog(state, `Room ${roomCode} created by ${hostPlayer.name}`, 'info');
     this.rooms.set(roomCode, state);
+    this.ensureRealtimeSubscription(roomCode);
     this.broadcast(roomCode);
+    await this.syncToSupabase(roomCode, state);
 
     return { room_id: roomId, room_code: roomCode };
   }
 
-  public joinRoom(roomCode: string, playerName: string, playerId: string): { success: boolean; error?: string } {
+  public async joinRoom(roomCode: string, playerName: string, playerId: string): Promise<{ success: boolean; error?: string }> {
     const key = roomCode.toUpperCase();
-    const state = this.rooms.get(key);
+    let state = this.rooms.get(key);
+    if (!state) {
+      state = await this.loadFromSupabase(key);
+    }
     if (!state) {
       return { success: false, error: 'Room not found. Check the code and try again.' };
     }
+
+    this.ensureRealtimeSubscription(key);
 
     // Reconnect case
     const existing = state.players.find((p) => p.id === playerId);
@@ -165,6 +279,7 @@ class UnoEngine {
       existing.connected = true;
       state.room.last_active_at = new Date().toISOString();
       this.broadcast(key);
+      await this.syncToSupabase(key, state);
       return { success: true };
     }
 
@@ -202,6 +317,7 @@ class UnoEngine {
 
     this.addLog(state, `${newPlayer.name} joined the room (Seat ${nextSeat + 1})`, 'info');
     this.broadcast(key);
+    await this.syncToSupabase(key, state);
 
     return { success: true };
   }
@@ -363,7 +479,7 @@ class UnoEngine {
 
     const playerCount = state.players.length;
     let step = state.room.play_direction;
-    let nextTurn = state.room.current_turn_index;
+    let nextTurn: number;
 
     // Handle Action Cards
     if (card.value === 'reverse') {
