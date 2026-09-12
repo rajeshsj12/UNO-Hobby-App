@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { Player } from '../types';
-import { ShieldAlert, Flame } from 'lucide-react';
+import { ShieldAlert, Flame, Crown } from 'lucide-react';
 
 interface PlayerAvatarProps {
   player: Player;
@@ -35,13 +35,23 @@ export const PlayerAvatar: React.FC<PlayerAvatarProps> = ({
       className={`relative flex flex-col items-center p-1.5 w-20 rounded-lg transition-all duration-200 ${
         isCurrentTurn
           ? 'bg-slate-800/90 border-2 border-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.5)] opacity-100'
+          : player.is_host
+          ? 'bg-slate-800/90 border-2 border-amber-500/60 shadow-[0_0_8px_rgba(245,158,11,0.2)] opacity-95 hover:opacity-100'
           : 'bg-slate-800/80 border border-slate-700 opacity-70 hover:opacity-100'
       }`}
     >
+      {/* Host / Room Owner Badge */}
+      {player.is_host && (
+        <div className="absolute -top-2.5 -right-1 bg-gradient-to-r from-amber-400 to-yellow-500 text-slate-950 font-black text-[8px] px-1.5 py-0.5 rounded-full shadow-md flex items-center gap-0.5 border border-yellow-200 z-10 uppercase tracking-tighter">
+          <Crown className="w-2.5 h-2.5 fill-current" />
+          <span>Host</span>
+        </div>
+      )}
+
       {/* Player Name */}
-      <span className="text-[10px] font-bold truncate w-full text-center text-slate-200">
-        {player.name}
-        {player.is_host && <span className="text-yellow-400 ml-0.5">★</span>}
+      <span className="text-[10px] font-bold truncate w-full text-center text-slate-200 flex items-center justify-center gap-0.5">
+        {player.is_host && <Crown className="w-2.5 h-2.5 text-amber-400 fill-amber-400 shrink-0" />}
+        <span className="truncate">{player.name}</span>
       </span>
 
       {/* Card Count Box */}

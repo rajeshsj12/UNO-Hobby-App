@@ -41,6 +41,19 @@ export function generateUUID(): string {
 }
 
 export function getOrCreatePlayerId(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      let id = sessionStorage.getItem(PLAYER_ID_COOKIE);
+      if (!id) {
+        id = generateUUID();
+        sessionStorage.setItem(PLAYER_ID_COOKIE, id);
+      }
+      return id;
+    } catch {
+      // ignore
+    }
+  }
+
   let id = getCookie(PLAYER_ID_COOKIE);
   if (!id) {
     id = generateUUID();
@@ -50,9 +63,25 @@ export function getOrCreatePlayerId(): string {
 }
 
 export function getSavedPlayerName(): string {
+  if (typeof window !== 'undefined') {
+    try {
+      const s = sessionStorage.getItem(PLAYER_NAME_COOKIE);
+      if (s) return s;
+    } catch {
+      // ignore
+    }
+  }
   return getCookie(PLAYER_NAME_COOKIE) || '';
 }
 
 export function savePlayerName(name: string): void {
-  setCookie(PLAYER_NAME_COOKIE, name.trim(), 7);
+  const trimmed = name.trim();
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.setItem(PLAYER_NAME_COOKIE, trimmed);
+    } catch {
+      // ignore
+    }
+  }
+  setCookie(PLAYER_NAME_COOKIE, trimmed, 7);
 }

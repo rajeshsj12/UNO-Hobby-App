@@ -28,6 +28,7 @@ class UnoEngine {
   private rooms: Map<string, InternalRoomState> = new Map();
   private subscribers: Map<string, Set<(snapshot: FullGameSnapshot) => void>> = new Map();
   private realtimeChannels: Map<string, ReturnType<typeof supabase.channel>> = new Map();
+  private pollingIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
   private broadcastChannel: BroadcastChannel | null =
     typeof window !== 'undefined' && 'BroadcastChannel' in window
       ? new BroadcastChannel('uno_multiplayer_sync')
@@ -125,6 +126,34 @@ class UnoEngine {
     } catch (err) {
       console.error('Failed to subscribe to Supabase realtime:', err);
     }
+
+    // Polling fallback every 1500ms to guarantee sync even when WebSockets lag or drop
+    if (!this.pollingIntervals.has(key)) {
+      const timer = setInterval(() => {
+        const subs = this.subscribers.get(key);
+        if (!subs || subs.size === 0) return;
+
+        this.loadFromSupabase(key).then((remote) => {
+          if (remote) {
+            const current = this.rooms.get(key);
+            if (
+              !current ||
+              current.players.length !== remote.players.length ||
+              current.room.status !== remote.room.status ||
+              current.room.current_turn_index !== remote.room.current_turn_index ||
+              current.room.last_active_at !== remote.room.last_active_at ||
+              current.discard_pile.length !== remote.discard_pile.length ||
+              JSON.stringify(current.players) !== JSON.stringify(remote.players)
+            ) {
+              this.rooms.set(key, remote);
+              this.persistToStorage();
+              this.notifySubscribers(key);
+            }
+          }
+        });
+      }, 1500);
+      this.pollingIntervals.set(key, timer);
+    }
   }
 
   public async loadFromSupabase(roomCode: string): Promise<InternalRoomState | null> {
@@ -182,6 +211,13 @@ class UnoEngine {
 
     return () => {
       set.delete(wrappedCb);
+      if (set.size === 0) {
+        const timer = this.pollingIntervals.get(key);
+        if (timer) {
+          clearInterval(timer);
+          this.pollingIntervals.delete(key);
+        }
+      }
     };
   }
 
@@ -263,10 +299,8 @@ class UnoEngine {
 
   public async joinRoom(roomCode: string, playerName: string, playerId: string): Promise<{ success: boolean; error?: string }> {
     const key = roomCode.toUpperCase();
-    let state = this.rooms.get(key);
-    if (!state) {
-      state = await this.loadFromSupabase(key);
-    }
+    const remoteState = await this.loadFromSupabase(key);
+    let state = remoteState || this.rooms.get(key);
     if (!state) {
       return { success: false, error: 'Room not found. Check the code and try again.' };
     }

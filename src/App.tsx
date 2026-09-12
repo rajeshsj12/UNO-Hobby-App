@@ -21,6 +21,7 @@ import {
   ArrowRight,
   ShieldCheck,
   Zap,
+  Crown,
 } from 'lucide-react';
 
 export default function App() {
@@ -88,15 +89,27 @@ export default function App() {
             SUPER PEAKS UNO 20 20
           </div>
 
-          {/* Room Code Indicator (when in room) */}
+          {/* Room Code Indicator & Room Owner Badge */}
           {snapshot?.room ? (
-            <div className="flex flex-col">
-              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter leading-tight">
-                Room Code
-              </span>
-              <span className="text-base sm:text-lg font-mono font-bold leading-none text-blue-400">
-                {snapshot.room.room_code}
-              </span>
+            <div className="flex items-center gap-2.5">
+              <div className="flex flex-col">
+                <span className="text-[10px] text-slate-400 uppercase font-bold tracking-tighter leading-tight">
+                  Room Code
+                </span>
+                <span className="text-base sm:text-lg font-mono font-bold leading-none text-amber-400">
+                  {snapshot.room.room_code}
+                </span>
+              </div>
+              {/* Prominent Room Owner Badge */}
+              {snapshot.players.find((p) => p.is_host) && (
+                <div className="hidden sm:flex items-center gap-1.5 bg-amber-500/15 border border-amber-400/40 px-2.5 py-1 rounded-full text-xs font-bold text-amber-300 shadow-sm">
+                  <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                  <span>
+                    Host: {snapshot.players.find((p) => p.is_host)?.name}
+                    {snapshot.players.find((p) => p.is_host)?.id === playerId ? ' (You)' : ''}
+                  </span>
+                </div>
+              )}
             </div>
           ) : (
             <span className="text-[11px] font-bold bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full border border-slate-700 hidden sm:inline">
