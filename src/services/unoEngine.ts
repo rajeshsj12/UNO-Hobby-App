@@ -413,6 +413,11 @@ class UnoEngine {
 
     if (state.players.length < 2) return { success: false, error: 'Need at least 2 players to start Uno' };
 
+    // Re-index seats consecutively 0..N-1 to ensure no turn calculation skips
+    state.players.forEach((p, idx) => {
+      p.seat_index = idx;
+    });
+
     // 20-Player Deck Math: ceil((players * 7 + 40) / 108)
     const decksNeeded = calculateDecksNeeded(state.players.length);
     state.room.deck_count = decksNeeded;
@@ -767,6 +772,43 @@ class UnoEngine {
 
   public restartGame(roomCode: string, hostPlayerId: string): { success: boolean; error?: string } {
     return this.startGame(roomCode, hostPlayerId);
+  }
+
+  public async leaveRoom(roomCode: string, playerId: string): Promise<{ success: boolean }> {
+    const key = roomCode.toUpperCase();
+    let state = this.rooms.get(key);
+    if (!state) {
+      state = await this.loadFromSupabase(key);
+    }
+    if (!state) return { success: true };
+
+    if (state.room.status === 'waiting') {
+      const leavingPlayer = state.players.find((p) => p.id === playerId);
+      state.players = state.players.filter((p) => p.id !== playerId);
+      delete state.hands[playerId];
+
+      if (leavingPlayer?.is_host && state.players.length > 0) {
+        const nextHuman = state.players.find((p) => !p.is_bot) || state.players[0];
+        if (nextHuman) {
+          nextHuman.is_host = true;
+          this.addLog(state, `👑 ${nextHuman.name} is now the new Room Host!`, 'info');
+        }
+      }
+
+      state.players.forEach((p, idx) => {
+        p.seat_index = idx;
+      });
+
+      if (leavingPlayer) {
+        this.addLog(state, `${leavingPlayer.name} left the room`, 'info');
+      }
+
+      state.room.last_active_at = new Date().toISOString();
+      this.broadcast(key);
+      await this.syncToSupabase(key, state);
+    }
+
+    return { success: true };
   }
 }
 

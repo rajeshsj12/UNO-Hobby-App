@@ -226,11 +226,14 @@ export function useUnoGame() {
     unoEngine.restartGame(currentRoomCode, playerId);
   }, [currentRoomCode, playerId]);
 
-  const leaveRoom = useCallback(() => {
+  const leaveRoom = useCallback(async () => {
+    if (currentRoomCode && playerId) {
+      await unoEngine.leaveRoom(currentRoomCode, playerId);
+    }
     setCurrentRoomCode(null);
     setSnapshot(null);
     window.history.replaceState({}, '', window.location.pathname);
-  }, []);
+  }, [currentRoomCode, playerId]);
 
   return {
     playerId,
