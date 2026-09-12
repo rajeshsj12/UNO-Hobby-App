@@ -1,5 +1,5 @@
 {
-  "name": "Multiplayer Uno (20 Players)",
+  "name": "Super Peaks UNO 20 20",
   "description": "Real-time multiplayer Uno card game supporting up to 20 players with anonymous cookie-based sessions, dynamic deck scaling, comprehensive Uno rules and action cards, UNO calls, and complete Supabase SQL schema and RPC definitions.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

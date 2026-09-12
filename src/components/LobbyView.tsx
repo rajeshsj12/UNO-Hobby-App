@@ -56,7 +56,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       <div className="text-center mb-6">
         <div className="inline-flex items-center gap-2 bg-gradient-to-r from-red-600 to-amber-500 text-white font-black text-xs uppercase px-3 py-1 rounded-full shadow-md mb-2">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Multiplayer Uno Lobby</span>
+          <span>Super Peaks UNO 20 20 Lobby</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight">
           Room Code:{' '}

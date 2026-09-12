@@ -85,7 +85,7 @@ export default function App() {
             className="bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded text-xs font-black tracking-widest uppercase cursor-pointer select-none shadow-md"
             onClick={() => !snapshot && leaveRoom()}
           >
-            UNO MULTIPLAYER
+            SUPER PEAKS UNO 20 20
           </div>
 
           {/* Room Code Indicator (when in room) */}
@@ -235,7 +235,7 @@ export default function App() {
 
             <div className="text-center mb-6">
               <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
-                Play Uno <span className="bg-gradient-to-r from-red-500 via-amber-400 to-blue-500 bg-clip-text text-transparent">Multiplayer</span>
+                Super Peaks UNO <span className="bg-gradient-to-r from-red-500 via-amber-400 to-blue-500 bg-clip-text text-transparent">20 20</span>
               </h1>
               <p className="text-slate-400 text-sm mt-2 max-w-md mx-auto">
                 Real-time multiplayer Uno engine supporting up to <strong>20 simultaneous players</strong> with dynamic deck scaling, cookie-based session resilience, and complete Postgres RPCs.
